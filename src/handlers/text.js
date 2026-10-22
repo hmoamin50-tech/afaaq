@@ -31,8 +31,12 @@ async function handleAdminReply(ctx, text, m) {
       const fwd = ctx.message.forward_origin?.sender_user || ctx.message.forward_from;
       const uid = fwd?.id || Number(text.replace(/\D/g, ''));
       if (uid) {
-        await addAdmin(uid, fwd?.first_name || null, ctx.from.id);
-        await syncCommands();
+        try {
+          await addAdmin(uid, fwd?.first_name || null, ctx.from.id);
+          await syncCommands();
+        } catch (e) {
+          await ctx.reply('❌ ' + e.message);
+        }
       } else await ctx.reply('❌ أرسل رقم المعرّف (ID) أو حوّل رسالة من الشخص.');
       await adminsView(ctx, msgId);
     }
