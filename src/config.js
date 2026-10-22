@@ -33,5 +33,24 @@ export const WELCOME =
 
 // التفرعات التلقائية
 export const SUBJECT_SECTIONS = ['📚 مقررات', '📝 تلخيص', '🎬 شروحات فيديو', '🧪 امتحانات'];
-export const LEVEL_CHILDREN = ['📅 الفصل الدراسي الأول', '📅 الفصل الدراسي الثاني'];
-export const PREFIX = { f: '📁 ', s: '📘 ', l: '🎓 ' };
+export const LEVEL_CHILDREN = ['Semester 1', 'Semester 2'];
+export const PREFIX = { f: '', s: '', l: '' };               // الأسماء الجديدة بلا أيقونات بادئة
+export const LEGACY_PREFIXES = ['📁 ', '📘 ', '🎓 '];         // للحفاظ على أيقونات المجلدات القديمة عند إعادة التسمية
+
+// ============ هيكل القوائم (يُنشأ مرة واحدة) ============
+export const ACADEMIC = 'المحتوى الأكاديمي 📚📚';
+export const CONTACT = 'تواصل معنا 📩';
+export const LEGACY_NAME = '📥 ملفات قديمة (غير مصنفة)';
+export const LEVELS = ['المستوى الأول', 'المستوى الثاني', 'المستوى الثالث', 'المستوى الرابع', 'المستوى الخامس'];
+export const DEPARTMENTS = [
+  { name: 'قسم دبلوم', levels: 3 },
+  { name: 'مدنية 🏗', levels: 5 },
+  { name: 'كهرباء ⚡', levels: 5 },
+  { name: 'ميكانيكا ⚙️', levels: 5 },
+  { name: 'إضافات مفيدة 👷', levels: 0 },
+];
+
+// أزرار لوحة المفاتيح السفلية
+export const BACK_LABEL = 'رجوع 🔙';
+export const MAIN_LABEL = 'القائمة الرئيسية 🔝';
+export const ADMIN_LABEL = 'لوحة المشرف ⚙️';

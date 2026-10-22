@@ -1,6 +1,6 @@
 // ============ إنشاء الجداول تلقائياً ============
 import pg from 'pg';
-import { DB_URL, LEVEL_CHILDREN } from './config.js';
+import { DB_URL } from './config.js';
 
 const SCHEMA_SQL = `
 create table if not exists nodes (
@@ -44,6 +44,14 @@ create table if not exists admins (
   created_at timestamptz default now()
 );
 
+alter table users add column if not exists cur_node bigint;
+
+create table if not exists settings (
+  key text primary key,
+  value text
+);
+
+alter table settings enable row level security;
 alter table admins enable row level security;
 alter table nodes enable row level security;
 alter table files enable row level security;
@@ -61,17 +69,6 @@ export async function migrate() {
     await client.connect();
     await client.query(SCHEMA_SQL);
 
-    // بيانات أولية: فقط إذا كانت الشجرة فارغة تماماً
-    const { rows } = await client.query('select count(*)::int as c from nodes');
-    if (rows[0].c === 0) {
-      const lvl = await client.query(
-        'insert into nodes (parent_id, name, position) values (null, $1, 1) returning id',
-        ['🎓 المستوى الأول']
-      );
-      for (const [i, name] of LEVEL_CHILDREN.entries())
-        await client.query('insert into nodes (parent_id, name, position) values ($1, $2, $3)', [lvl.rows[0].id, name, i + 1]);
-      console.log('✅ تمت إضافة المستوى الأول وفصليه');
-    }
     await client.query("notify pgrst, 'reload schema'");
     console.log('✅ قاعدة البيانات جاهزة');
     return true;

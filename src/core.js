@@ -151,3 +151,10 @@ export function forceReply(ctx, text, tag) {
     reply_markup: { force_reply: true, selective: true },
   });
 }
+
+/* ---------- إعدادات نصية بسيطة (مثل نص «تواصل معنا») ---------- */
+export async function getSetting(key) {
+  const { data, error } = await db.from('settings').select('value').eq('key', key).maybeSingle();
+  return error ? null : data?.value ?? null;
+}
+export const setSetting = async (key, value) => ok(await db.from('settings').upsert({ key, value }));
