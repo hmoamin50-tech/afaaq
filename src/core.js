@@ -110,15 +110,23 @@ export const clearState = (id) => db.from('admin_state').delete().eq('admin_id',
 
 /* ---------- الرسائل ---------- */
 // يعدّل رسالة موجودة (msgId أو رسالة الضغطة) بدل إرسال رسالة جديدة
+// آخر قائمة مجلد معروضة لكل محادثة، لتحديثها تلقائياً بعد أي تغيير
+export const lastView = new Map(); // chatId -> { msgId, nodeId, page }
+
+// يرجع رقم الرسالة التي عُرض فيها النص
 export async function show(ctx, text, kb, msgId) {
   const extra = { parse_mode: 'HTML', ...kb };
+  lastView.delete(ctx.chat.id); // أي عرض آخر يُبطل التتبع؛ view() يعيد تسجيله
+  const target = msgId || ctx.callbackQuery?.message?.message_id;
   try {
-    if (msgId) return await ctx.telegram.editMessageText(ctx.chat.id, msgId, undefined, text, extra);
-    if (ctx.callbackQuery) return await ctx.editMessageText(text, extra);
+    if (target) {
+      await ctx.telegram.editMessageText(ctx.chat.id, target, undefined, text, extra);
+      return target;
+    }
   } catch (e) {
-    if (String(e.message).includes('not modified')) return;
+    if (String(e.message).includes('not modified')) return target;
   }
-  return ctx.reply(text, extra);
+  return (await ctx.reply(text, extra)).message_id;
 }
 
 // يطلب نصاً من المشرف، ويحفظ رقم الرسالة الأصلية داخل الوسم ليُعدَّل لاحقاً

@@ -1,6 +1,6 @@
 // ============ عرض المجلدات ============
 import { Markup } from 'telegraf';
-import { db, ok, isAdmin, getNode, children, crumbs, getState, show, esc } from './core.js';
+import { db, ok, isAdmin, getNode, children, crumbs, getState, show, esc, lastView } from './core.js';
 import { PAGE, WELCOME } from './config.js';
 
 const collator = new Intl.Collator('ar', { numeric: true, sensitivity: 'base' });
@@ -26,6 +26,7 @@ export async function view(ctx, nodeId = 0, page = 0, msgId) {
     const { data } = ok(await db.from('files').select('id,title,kind').eq('node_id', id));
     const files = (data || []).sort((a, b) => collator.compare(a.title, b.title));
     total = files.length;
+    page = Math.max(0, Math.min(page, Math.ceil(total / PAGE) - 1)); // بعد الحذف قد تختفي الصفحة الأخيرة
     files.slice(page * PAGE, page * PAGE + PAGE).forEach((f) =>
       rows.push([Markup.button.callback(`${fileIcon(f)} ${f.title.slice(0, 50)}`, `f:${f.id}`)])
     );
@@ -66,5 +67,13 @@ export async function view(ctx, nodeId = 0, page = 0, msgId) {
   if (!kids.length && !total)
     text += admin ? '\n\n<i>فارغ — استخدم ➕ إضافة أو 📤 رفع ملفات.</i>' : '\n\n<i>لا يوجد محتوى هنا بعد.</i>';
 
-  await show(ctx, text + banner, Markup.inlineKeyboard(rows), msgId);
+  const shownId = await show(ctx, text + banner, Markup.inlineKeyboard(rows), msgId);
+  lastView.set(ctx.chat.id, { msgId: shownId, nodeId: id, page });
+}
+
+// يعيد رسم آخر قائمة معروضة (إن كانت لنفس المجلد) ليظهر أي تغيير فوراً
+export async function refreshView(ctx, nodeId) {
+  const lv = lastView.get(ctx.chat.id);
+  if (!lv || (nodeId !== undefined && lv.nodeId !== Number(nodeId))) return;
+  await view(ctx, lv.nodeId, lv.page, lv.msgId);
 }
