@@ -1,10 +1,10 @@
 // ============ أدوات المشرف: إضافة، إدارة، نقل، حذف ============
 import { Markup } from 'telegraf';
 import {
-  adminAct, db, safe, esc, getNode, getFile, children, crumbs, nextPos, swap,
+  adminAct, db, safe, lastView, esc, getNode, getFile, children, crumbs, nextPos, swap,
   getState, setState, clearState, show, forceReply,
 } from '../core.js';
-import { view } from '../views.js';
+import { view, refreshView } from '../views.js';
 import { fileKb } from './files.js';
 import { resetSession } from './upload.js';
 import { PREFIX } from '../config.js';
@@ -49,7 +49,11 @@ adminAct('upend', async (ctx) => {
   await clearState(ctx.from.id);
   resetSession(ctx.from.id);
   await ctx.answerCbQuery('تم إنهاء الرفع ✅');
-  await view(ctx, st?.target_id || 0); // يحوّل رسالة الحالة إلى عرض المجلد
+  const stale = lastView.get(ctx.chat.id); // قائمة «وضع الرفع» القديمة
+  await view(ctx, st?.target_id || 0);     // يحوّل رسالة الحالة إلى عرض المجلد
+  const now = lastView.get(ctx.chat.id);
+  if (stale && now && stale.msgId !== now.msgId)
+    await safe(ctx.telegram.deleteMessage(ctx.chat.id, stale.msgId)); // لا نترك قائمة قديمة معلّقة
 });
 
 /* ---------- إدارة مجلد ---------- */
@@ -178,7 +182,9 @@ adminAct(/^fcancel:(\d+)$/, async (ctx) => {
 });
 
 adminAct(/^delfok:(\d+)$/, async (ctx) => {
+  const f = await getFile(ctx.match[1]);
   await db.from('files').delete().eq('id', ctx.match[1]);
   await ctx.answerCbQuery('تم الحذف 🗑');
-  await safe(ctx.deleteMessage()); // نحذف البطاقة بدل تركها في المحادثة
+  await safe(ctx.deleteMessage());                 // نحذف بطاقة الملف
+  if (f) await safe(refreshView(ctx, f.node_id));  // ونحدّث القائمة فوراً
 });

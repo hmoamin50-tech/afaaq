@@ -2,7 +2,7 @@
 import { Markup } from 'telegraf';
 import { bot, db, isAdmin, isOwner, safe, getNode, getFile, createNode, clearState, addAdmin } from '../core.js';
 import { adminsView, syncCommands } from './panel.js';
-import { view, fileIcon } from '../views.js';
+import { view, fileIcon, refreshView } from '../views.js';
 import { fileCaption, fileKb } from './files.js';
 import { PREFIX } from '../config.js';
 
@@ -48,6 +48,7 @@ async function handleAdminReply(ctx, text, m) {
       await safe(ctx.telegram.editMessageCaption(ctx.chat.id, msgId, undefined, await fileCaption(f, true), {
         reply_markup: fileKb(id).reply_markup,
       }));
+    if (f) await safe(refreshView(ctx, f.node_id)); // يظهر العنوان الجديد في القائمة
   }
 
   // حذف رسالة الطلب + رد المشرف
