@@ -54,7 +54,7 @@ alter table users enable row level security;
 export async function migrate() {
   if (!DB_URL) {
     console.warn('⚠️ DATABASE_URL غير موجود — لن يتم إنشاء الجداول تلقائياً.');
-    return;
+    return false;
   }
   const client = new pg.Client({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
   try {
@@ -74,8 +74,10 @@ export async function migrate() {
     }
     await client.query("notify pgrst, 'reload schema'");
     console.log('✅ قاعدة البيانات جاهزة');
+    return true;
   } catch (e) {
     console.error('❌ فشل إنشاء القاعدة:', e.message);
+    return false;
   } finally {
     await client.end().catch(() => {});
   }

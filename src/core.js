@@ -1,6 +1,7 @@
 // ============ قاعدة البيانات + البوت + دوال مشتركة ============
 import { createClient } from '@supabase/supabase-js';
 import { Telegraf } from 'telegraf';
+import { migrate } from './migrate.js';
 import { BOT_TOKEN, SB_URL, SB_KEY, ADMINS, PREFIX, SUBJECT_SECTIONS, LEVEL_CHILDREN } from './config.js';
 
 export const db = createClient(SB_URL, SB_KEY);
@@ -19,7 +20,21 @@ export async function loadAdmins() {
   return data;
 }
 export async function addAdmin(id, name, by) {
-  ok(await db.from('admins').upsert({ id, name: name || null, added_by: by || null }));
+  const row = { id, name: name || null, added_by: by || null };
+  let { error } = await db.from('admins').upsert(row);
+  if (error) {
+    // الجدول غير موجود غالباً: ننشئه تلقائياً ثم نعيد المحاولة مرة واحدة
+    const fixed = await migrate();
+    if (fixed) {
+      await new Promise((r) => setTimeout(r, 2000)); // مهلة لتحديث ذاكرة Supabase
+      ({ error } = await db.from('admins').upsert(row));
+    }
+  }
+  if (error)
+    throw new Error(
+      'تعذّر حفظ المشرف: ' + error.message +
+      '\nشغّل ملف schema.sql في Supabase > SQL Editor أو اضبط DATABASE_URL.'
+    );
   extraAdmins.add(Number(id));
 }
 export async function removeAdmin(id) {
