@@ -10,6 +10,7 @@ import './src/handlers/admin.js';
 import './src/handlers/upload.js';
 import { syncCommands } from './src/handlers/panel.js';
 import './src/handlers/nav.js';
+import './src/handlers/export.js';
 import './src/handlers/text.js';
 import { loadAdmins } from './src/core.js';
 
