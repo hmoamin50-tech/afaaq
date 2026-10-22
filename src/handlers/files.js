@@ -2,7 +2,6 @@
 import { Markup } from 'telegraf';
 import { bot, db, isAdmin, getNode, getFile, crumbs } from '../core.js';
 import { view } from '../views.js';
-import { redeemInvite } from './panel.js';
 
 export const fileKb = (id) =>
   Markup.inlineKeyboard([
@@ -15,17 +14,11 @@ export async function fileCaption(f, admin) {
   return `${f.title}\n📍 ${await crumbs(await getNode(f.node_id))}\n🆔 #${f.id}`;
 }
 
-async function sendFile(ctx, f) {
+export async function sendFile(ctx, f) {
   const admin = isAdmin(ctx);
   const extra = { caption: await fileCaption(f, admin), ...(admin ? fileKb(f.id) : {}) };
   return f.kind === 'video' ? ctx.replyWithVideo(f.file_id, extra) : ctx.replyWithDocument(f.file_id, extra);
 }
-
-bot.start(async (ctx) => {
-  await db.from('users').upsert({ id: ctx.from.id, username: ctx.from.username, first_name: ctx.from.first_name });
-  if (ctx.payload && (await redeemInvite(ctx))) return;
-  await view(ctx, 0);
-});
 
 bot.action(/^n:(\d+):(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();

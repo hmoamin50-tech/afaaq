@@ -1,10 +1,11 @@
 // ============ النصوص: ردود المشرف + البحث + الأوامر ============
 import { Markup } from 'telegraf';
-import { bot, db, isAdmin, isOwner, safe, getNode, getFile, createNode, clearState, addAdmin } from '../core.js';
+import { bot, db, isAdmin, isOwner, safe, getNode, getFile, createNode, clearState, addAdmin, setSetting } from '../core.js';
 import { adminsView, syncCommands } from './panel.js';
 import { view, fileIcon, refreshView } from '../views.js';
 import { fileCaption, fileKb } from './files.js';
-import { PREFIX } from '../config.js';
+import { LEGACY_PREFIXES } from '../config.js';
+import { handleNav, restoreKeyboard } from './nav.js';
 
 bot.command('cancel', async (ctx) => {
   if (!isAdmin(ctx)) return;
@@ -19,13 +20,9 @@ async function handleAdminReply(ctx, text, m) {
   const msgId = msgStr ? Number(msgStr) : undefined;
 
   if (act === 'add') {
-    if (kind === 'l' && id !== 0) {
-      await ctx.reply('🚫 لا يمكن إضافة مستوى داخل مستوى. أضفه من الصفحة الرئيسية.');
-    } else {
-      const names = text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 30);
-      for (const n of names) await createNode(id, n, kind);
-      await view(ctx, id, 0, msgId);
-    }
+    const names = text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 30);
+    for (const n of names) await createNode(id, n, kind);
+    await view(ctx, id, 0, msgId);
   } else if (act === 'adm') {
     if (isOwner(ctx)) {
       const fwd = ctx.message.forward_origin?.sender_user || ctx.message.forward_from;
@@ -40,9 +37,12 @@ async function handleAdminReply(ctx, text, m) {
       } else await ctx.reply('❌ أرسل رقم المعرّف (ID) أو حوّل رسالة من الشخص.');
       await adminsView(ctx, msgId);
     }
+  } else if (act === 'ctc') {
+    await setSetting('contact', text.slice(0, 3500));
+    await ctx.reply('✅ حُفظ نص «تواصل معنا».');
   } else if (act === 'rnn') {
     const node = await getNode(id);
-    const pre = Object.values(PREFIX).find((p) => node?.name.startsWith(p)) || ''; // نحافظ على أيقونة النوع
+    const pre = LEGACY_PREFIXES.find((p) => node?.name.startsWith(p)) || ''; // نحافظ على أيقونة النوع
     await db.from('nodes').update({ name: pre + text.slice(0, 60) }).eq('id', id);
     await view(ctx, id, 0, msgId);
   } else if (act === 'rnf') {
@@ -58,14 +58,18 @@ async function handleAdminReply(ctx, text, m) {
   // حذف رسالة الطلب + رد المشرف
   await safe(ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.reply_to_message.message_id));
   await safe(ctx.deleteMessage());
+  await restoreKeyboard(ctx); // force_reply يخفي لوحة المفاتيح، نعيدها
 }
 
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('/')) return;
 
-  const m = ctx.message.reply_to_message?.text?.match(/🔖 (add|rnn|rnf|adm):(\d+)(?::([fsl]))?(?::(\d+))?/);
+  const m = ctx.message.reply_to_message?.text?.match(/🔖 (add|rnn|rnf|adm|ctc):(\d+)(?::([fsl]))?(?::(\d+))?/);
   if (isAdmin(ctx) && m) return handleAdminReply(ctx, text, m);
+
+  // ضغطة زر من لوحة المفاتيح السفلية؟
+  if (await handleNav(ctx, text)) return;
 
   // بحث
   const q = text.replace(/[%_,()]/g, ' ').slice(0, 60);

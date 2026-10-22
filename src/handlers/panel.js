@@ -6,7 +6,7 @@ import {
   show, forceReply, safe,
 } from '../core.js';
 import { ADMINS, WEBHOOK_SECRET } from '../config.js';
-import { view } from '../views.js';
+import { legacyId, legacyFileCount } from '../layout.js';
 
 /* ---------- الأوامر الظاهرة في قائمة تيليجرام ---------- */
 const USER_CMDS = [
@@ -30,15 +30,18 @@ export async function syncCommands() {
 /* ---------- الدليل ---------- */
 const USER_HELP =
   '📖 <b>طريقة الاستخدام</b>\n\n' +
-  '• اضغط على المجلدات للتنقل: مستوى ← فصل ← مادة ← القسم.\n' +
-  '• اضغط على اسم الملف ليصلك.\n' +
+  '• استخدم الأزرار أسفل الشاشة للتنقل: المحتوى الأكاديمي ← القسم ← المستوى ← الفصل ← المادة.\n' +
+  '• عند الوصول لمجلد فيه ملفات تصلك مباشرة.\n' +
   '• اكتب اسم الملف في المحادثة للبحث عنه.\n' +
   '• /start للعودة للقائمة الرئيسية.';
 
 const ADMIN_HELP =
   USER_HELP + '\n\n🛠 <b>للمشرفين</b>\n\n' +
   '• <b>➕ إضافة:</b> مجلد أو مادة (تُنشأ أقسامها تلقائياً). يمكنك إرسال عدة أسماء، كل اسم في سطر.\n' +
-  '• <b>🎓 المستوى:</b> يُضاف من الصفحة الرئيسية فقط، ولا يمكن وضعه داخل مستوى.\n' +
+  '• <b>⚙️ لوحة المشرف:</b> زر أسفل الشاشة يفتح أدوات الإدارة للمجلد الذي أنت فيه.\n' +
+  '• <b>🎓 المستوى:</b> يُنشأ بفصلين تلقائياً (Semester 1/2).\n' +
+  '• <b>📥 الملفات القديمة:</b> من /panel ← «الملفات القديمة». افتح الملف ← 🔀 نقل ← اختر القسم ← «انقل إلى هنا». أو من «إدارة المجلد» ← «📦 نقل كل المحتوى» لنقل مجلد كامل دفعة واحدة. هذه الملفات لا تظهر للطلاب في القوائم إلى أن تنقلها (لكن البحث بالاسم يجدها).\n' +
+  '• <b>📞 تواصل معنا:</b> من /panel ← «نص تواصل معنا».\n' +
   '• <b>📤 رفع ملفات:</b> افتح المجلد، اضغط رفع، ثم أرسل الملفات وأنهِ الرفع.\n' +
   '• <b>⚙️ إدارة هذا المجلد:</b> إعادة تسمية، تقديم/تأخير، نقل، حذف.\n' +
   '• على أي ملف: تعديل العنوان، نقل، حذف.\n' +
@@ -50,15 +53,25 @@ bot.help((ctx) => ctx.reply(isAdmin(ctx) ? ADMIN_HELP : USER_HELP, { parse_mode:
 async function statsText() {
   const c = (t) => db.from(t).select('*', { count: 'exact', head: true });
   const [u, f, n] = await Promise.all([c('users'), c('files'), c('nodes')]);
-  return `👥 المستخدمون: <b>${u.count}</b>\n📄 الملفات: <b>${f.count}</b>\n📁 المجلدات: <b>${n.count}</b>`;
+  let t = `👥 المستخدمون: <b>${u.count}</b>\n📄 الملفات: <b>${f.count}</b>\n📁 المجلدات: <b>${n.count}</b>`;
+  const left = await legacyFileCount();
+  if (left !== null) t += `\n📥 ملفات غير مصنفة: <b>${left}</b>`;
+  return t;
 }
 
 async function panelView(ctx) {
-  const rows = [[Markup.button.callback('📖 الدليل', 'guide')]];
+  const rows = [[Markup.button.callback('📞 نص «تواصل معنا»', 'ctc')], [Markup.button.callback('📖 الدليل', 'guide')]];
+  const hid = await legacyId();
+  if (hid) rows.unshift([Markup.button.callback('📥 الملفات القديمة (للتصنيف)', `n:${hid}:0`)]);
   if (isOwner(ctx)) rows.unshift([Markup.button.callback('👥 المشرفون', 'adm')]);
   rows.push([Markup.button.callback('🏠 الرئيسية', 'n:0:0')]);
   await show(ctx, `🛠 <b>لوحة التحكم</b>\n\n${await statsText()}`, Markup.inlineKeyboard(rows));
 }
+
+adminAct('ctc', async (ctx) => {
+  await ctx.answerCbQuery();
+  await forceReply(ctx, '✏️ أرسل نص «تواصل معنا» (أرقام، روابط، أي معلومات) — رد على هذه الرسالة', 'ctc:0');
+});
 
 bot.command('panel', (ctx) => isAdmin(ctx) && panelView(ctx));
 bot.command('stats', (ctx) => isAdmin(ctx) && panelView(ctx));
@@ -125,6 +138,5 @@ export async function redeemInvite(ctx) {
     await syncCommands();
     await ctx.reply('🎉 أصبحت الآن مشرفاً. اكتب /help لمعرفة طريقة التحكم.');
   }
-  await view(ctx, 0);
   return true;
 }

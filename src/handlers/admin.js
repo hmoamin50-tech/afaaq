@@ -7,16 +7,16 @@ import {
 import { view, refreshView } from '../views.js';
 import { fileKb } from './files.js';
 import { resetSession } from './upload.js';
-import { PREFIX } from '../config.js';
 
 
 /* ---------- إضافة ---------- */
 adminAct(/^add:(\d+)$/, async (ctx) => {
   const id = ctx.match[1];
   await ctx.answerCbQuery();
-  // خيار «مستوى» يظهر في الصفحة الرئيسية فقط (قبل الدخول إلى أي مستوى)
-  const rows = [[Markup.button.callback('📘 مادة (تفرعات تلقائية)', `addk:${id}:s`)]];
-  if (id === '0') rows.push([Markup.button.callback('🎓 مستوى (فصلان تلقائياً)', `addk:${id}:l`)]);
+  const rows = [
+    [Markup.button.callback('📘 مادة (تفرعات تلقائية)', `addk:${id}:s`)],
+    [Markup.button.callback('🎓 مستوى (Semester 1/2 تلقائياً)', `addk:${id}:l`)],
+  ];
   rows.push([Markup.button.callback('📁 مجلد عادي (تخصص/أي شيء)', `addk:${id}:f`)]);
   rows.push([Markup.button.callback('↩️ إلغاء', `n:${id}:0`)]);
   await safe(ctx.editMessageReplyMarkup(Markup.inlineKeyboard(rows).reply_markup));
@@ -24,12 +24,10 @@ adminAct(/^add:(\d+)$/, async (ctx) => {
 
 adminAct(/^addk:(\d+):([fsl])$/, async (ctx) => {
   const [, id, k] = ctx.match;
-  if (k === 'l' && id !== '0')
-    return ctx.answerCbQuery('🚫 لا يمكن إضافة مستوى داخل مستوى — المستويات من الصفحة الرئيسية فقط', { show_alert: true });
   await ctx.answerCbQuery();
   const label = {
     s: 'المادة (ستُنشأ مقررات/تلخيص/فيديو/امتحانات تلقائياً)',
-    l: 'المستوى (سيُنشأ الفصلان تلقائياً)',
+    l: 'المستوى (سيُنشأ Semester 1 و Semester 2 تلقائياً)',
     f: 'المجلد',
   }[k];
   await forceReply(ctx, `✏️ أرسل اسم ${label}\n(يمكنك إرسال عدة أسماء، كل اسم في سطر)\n(رد على هذه الرسالة)`, `add:${id}:${k}`);
@@ -67,6 +65,7 @@ async function manageView(ctx, node) {
       [Markup.button.callback('✏️ إعادة تسمية', `rnn:${node.id}`)],
       [Markup.button.callback('⬆️ تقديم', `nup:${node.id}`), Markup.button.callback('⬇️ تأخير', `ndn:${node.id}`)],
       [Markup.button.callback('🔀 نقل', `mvn:${node.id}`), Markup.button.callback('🗑 حذف', `deln:${node.id}`)],
+      [Markup.button.callback('📦 نقل كل المحتوى إلى مجلد آخر', `mva:${node.id}`)],
       [Markup.button.callback('🔙 رجوع', `n:${node.id}:0`)],
     ])
   );
@@ -121,6 +120,14 @@ adminAct(/^mvn:(\d+)$/, async (ctx) => {
   await view(ctx, node.parent_id || 0);
 });
 
+adminAct(/^mva:(\d+)$/, async (ctx) => {
+  const node = await getNode(ctx.match[1]);
+  if (!node) return ctx.answerCbQuery('غير موجود');
+  await setState(ctx.from.id, 'move_all', node.id);
+  await ctx.answerCbQuery('اختر المجلد الوجهة');
+  await view(ctx, 0);
+});
+
 adminAct(/^mvf:(\d+)$/, async (ctx) => {
   const f = await getFile(ctx.match[1]);
   if (!f) return ctx.answerCbQuery('غير موجود');
@@ -140,20 +147,26 @@ adminAct(/^mvhere:(\d+)$/, async (ctx) => {
   const st = await getState(ctx.from.id);
   if (!st?.mode?.startsWith('move_')) return ctx.answerCbQuery('لا يوجد نقل نشط');
 
+  const inside = async (start, target) => { // هل start داخل target (أو هو نفسه)؟
+    let c = start ? await getNode(start) : null;
+    while (c) { if (c.id === target) return true; c = c.parent_id ? await getNode(c.parent_id) : null; }
+    return false;
+  };
+
   if (st.mode === 'move_file') {
     if (!dest) return ctx.answerCbQuery('لا يمكن وضع ملف في الصفحة الرئيسية', { show_alert: true });
     await db.from('files').update({ node_id: dest }).eq('id', st.target_id);
+  } else if (st.mode === 'move_all') {
+    if (!dest) return ctx.answerCbQuery('اختر مجلداً وليس الصفحة الرئيسية', { show_alert: true });
+    if (await inside(dest, st.target_id))
+      return ctx.answerCbQuery('لا يمكن النقل إلى نفس المجلد أو داخله', { show_alert: true });
+    await db.from('files').update({ node_id: dest }).eq('node_id', st.target_id);
+    let pos = await nextPos(dest);
+    for (const k of await children(st.target_id))
+      await db.from('nodes').update({ parent_id: dest, position: pos++ }).eq('id', k.id);
   } else {
-    const moved = await getNode(st.target_id);
-    if (moved?.name.startsWith(PREFIX.l) && dest)
-      return ctx.answerCbQuery('🚫 المستوى مكانه الصفحة الرئيسية فقط', { show_alert: true });
-    // منع نقل مجلد داخل نفسه أو داخل أحد أبنائه
-    let cur = dest ? await getNode(dest) : null;
-    while (cur) {
-      if (cur.id === st.target_id)
-        return ctx.answerCbQuery('لا يمكن نقل المجلد داخل نفسه', { show_alert: true });
-      cur = cur.parent_id ? await getNode(cur.parent_id) : null;
-    }
+    if (await inside(dest, st.target_id))
+      return ctx.answerCbQuery('لا يمكن نقل المجلد داخل نفسه', { show_alert: true });
     await db.from('nodes').update({ parent_id: dest || null, position: await nextPos(dest) }).eq('id', st.target_id);
   }
   await clearState(ctx.from.id);
