@@ -1,11 +1,13 @@
 import express from 'express';
 import { Telegraf, Markup } from 'telegraf';
 import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 
 const {
   BOT_TOKEN,
   SUPABASE_URL,
   SUPABASE_KEY, // service_role key
+  DATABASE_URL, // رابط Postgres (Session pooler) لإنشاء الجداول تلقائياً
   ADMIN_IDS = '',
   WEBHOOK_SECRET = 'change-me-please',
   RENDER_EXTERNAL_HOSTNAME,
@@ -17,6 +19,10 @@ const isAdmin = (ctx) => ADMINS.has(ctx.from?.id);
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Telegraf(BOT_TOKEN);
 const PAGE = 8;
+const ok = (r) => {
+  if (r.error) throw new Error(r.error.message);
+  return r;
+};
 
 const WELCOME =
   '👋 أهلاً بك في\n\n📚 *مجموعة آفاق*\nمكتبة طلاب كلية الهندسة — جامعة كسلا\n\nاختر من القائمة، أو اكتب اسم ملف للبحث عنه:';
@@ -33,13 +39,13 @@ const safe = async (p) => {
   }
 };
 
-const getNode = async (id) => (await db.from('nodes').select('*').eq('id', id).maybeSingle()).data;
-const getFile = async (id) => (await db.from('files').select('*').eq('id', id).maybeSingle()).data;
+const getNode = async (id) => ok(await db.from('nodes').select('*').eq('id', id).maybeSingle()).data;
+const getFile = async (id) => ok(await db.from('files').select('*').eq('id', id).maybeSingle()).data;
 
 async function children(parentId) {
   let q = db.from('nodes').select('*').order('position').order('id');
   q = parentId ? q.eq('parent_id', parentId) : q.is('parent_id', null);
-  return (await q).data || [];
+  return ok(await q).data || [];
 }
 
 async function crumbs(node) {
@@ -55,20 +61,20 @@ async function crumbs(node) {
 async function nextPos(parentId) {
   let q = db.from('nodes').select('position').order('position', { ascending: false }).limit(1);
   q = parentId ? q.eq('parent_id', parentId) : q.is('parent_id', null);
-  const { data } = await q;
+  const { data } = ok(await q);
   return (data?.[0]?.position ?? 0) + 1;
 }
 
 // kind: f = مجلد عادي | s = مادة (4 تفرعات) | l = مستوى (فصلان)
 async function createNode(parentId, name, kind) {
-  const { data: n } = await db
+  const { data: n } = ok(await db
     .from('nodes')
     .insert({ parent_id: parentId || null, name: (PREFIX[kind] || '') + name.slice(0, 60), position: await nextPos(parentId) })
     .select()
-    .single();
+    .single());
   const kids = kind === 's' ? SUBJECT_SECTIONS : kind === 'l' ? LEVEL_CHILDREN : [];
   if (kids.length)
-    await db.from('nodes').insert(kids.map((k, i) => ({ parent_id: n.id, name: k, position: i + 1 })));
+    ok(await db.from('nodes').insert(kids.map((k, i) => ({ parent_id: n.id, name: k, position: i + 1 }))));
   return n;
 }
 
@@ -418,7 +424,83 @@ bot.on('text', async (ctx) => {
   );
 });
 
-bot.catch((err) => console.error('Bot error:', err));
+bot.catch(async (err, ctx) => {
+  console.error('Bot error:', err);
+  if (ctx && isAdmin(ctx)) await safe(ctx.reply('❌ خطأ: ' + (err.message || err)));
+});
+
+/* ================= إنشاء القاعدة تلقائياً ================= */
+const SCHEMA_SQL = `
+create table if not exists nodes (
+  id bigserial primary key,
+  parent_id bigint references nodes(id) on delete cascade,
+  name text not null,
+  position int not null default 0,
+  created_at timestamptz default now()
+);
+create index if not exists nodes_parent_idx on nodes(parent_id);
+
+create table if not exists files (
+  id bigserial primary key,
+  node_id bigint not null references nodes(id) on delete cascade,
+  title text not null,
+  kind text not null default 'document',
+  file_id text not null,
+  file_unique_id text,
+  file_size bigint,
+  created_at timestamptz default now()
+);
+create index if not exists files_node_idx on files(node_id);
+
+create table if not exists admin_state (
+  admin_id bigint primary key,
+  mode text,
+  target_id bigint
+);
+
+create table if not exists users (
+  id bigint primary key,
+  username text,
+  first_name text,
+  joined_at timestamptz default now()
+);
+
+alter table nodes enable row level security;
+alter table files enable row level security;
+alter table admin_state enable row level security;
+alter table users enable row level security;
+`;
+
+async function migrate() {
+  if (!DATABASE_URL) {
+    console.warn('⚠️ DATABASE_URL غير موجود — لن يتم إنشاء الجداول تلقائياً.');
+    return;
+  }
+  const client = new pg.Client({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  try {
+    await client.connect();
+    await client.query(SCHEMA_SQL);
+
+    // بيانات أولية: فقط إذا كانت الشجرة فارغة تماماً
+    const { rows } = await client.query('select count(*)::int as c from nodes');
+    if (rows[0].c === 0) {
+      const lvl = await client.query(
+        "insert into nodes (parent_id, name, position) values (null, $1, 1) returning id",
+        ['🎓 المستوى الأول']
+      );
+      for (const [i, name] of LEVEL_CHILDREN.entries())
+        await client.query('insert into nodes (parent_id, name, position) values ($1, $2, $3)', [lvl.rows[0].id, name, i + 1]);
+      console.log('✅ تمت إضافة المستوى الأول وفصليه');
+    }
+    await client.query("notify pgrst, 'reload schema'");
+    console.log('✅ قاعدة البيانات جاهزة');
+  } catch (e) {
+    console.error('❌ فشل إنشاء القاعدة:', e.message);
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+await migrate();
 
 /* ================= تشغيل ================= */
 if (RENDER_EXTERNAL_HOSTNAME) {
