@@ -1,6 +1,7 @@
 import express from 'express';
 import { bot, isAdmin, safe } from './src/core.js';
 import { migrate } from './src/migrate.js';
+import { seedLayout } from './src/layout.js';
 import { RENDER_HOST, WEBHOOK_SECRET, PORT } from './src/config.js';
 
 // ترتيب التسجيل مهم: النصوص أخيراً
@@ -8,6 +9,7 @@ import './src/handlers/files.js';
 import './src/handlers/admin.js';
 import './src/handlers/upload.js';
 import { syncCommands } from './src/handlers/panel.js';
+import './src/handlers/nav.js';
 import './src/handlers/text.js';
 import { loadAdmins } from './src/core.js';
 
@@ -18,6 +20,7 @@ bot.catch(async (err, ctx) => {
 
 await migrate();
 await loadAdmins();
+await seedLayout().catch((e) => console.error('layout:', e.message));
 await syncCommands();
 
 if (RENDER_HOST) {

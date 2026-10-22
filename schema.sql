@@ -41,22 +41,21 @@ create table if not exists admins (
   created_at timestamptz default now()
 );
 
+alter table users add column if not exists cur_node bigint;
+
+create table if not exists settings (
+  key   text primary key,
+  value text
+);
+alter table settings    enable row level security;
+
 alter table nodes       enable row level security;
 alter table files       enable row level security;
 alter table admin_state enable row level security;
 alter table users       enable row level security;
 alter table admins      enable row level security;
 
--- بيانات أولية: فقط إذا كانت الشجرة فارغة
-do $$
-declare lid bigint;
-begin
-  if not exists (select 1 from nodes) then
-    insert into nodes (parent_id, name, position) values (null, '🎓 المستوى الأول', 1) returning id into lid;
-    insert into nodes (parent_id, name, position) values
-      (lid, '📅 الفصل الدراسي الأول', 1),
-      (lid, '📅 الفصل الدراسي الثاني', 2);
-  end if;
-end $$;
+-- ملاحظة: هيكل القوائم (المحتوى الأكاديمي ← الأقسام ← المستويات ← الفصول) ينشئه البوت تلقائياً عند أول تشغيل،
+-- وينقل أي محتوى قديم إلى مجلد «ملفات قديمة (غير مصنفة)» دون حذف شيء.
 
 notify pgrst, 'reload schema';
