@@ -18,6 +18,7 @@ const ADMIN_CMDS = [
   { command: 'panel', description: 'لوحة التحكم' },
   { command: 'cancel', description: 'إلغاء الوضع الحالي' },
   { command: 'export', description: 'تصدير الملفات JSON' },
+  { command: 'classify', description: 'تصنيف الملفات القديمة' },
 ];
 
 export async function syncCommands() {
