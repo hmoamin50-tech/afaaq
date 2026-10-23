@@ -26,7 +26,7 @@ adminAct(/^addk:(\d+):([fsl])$/, async (ctx) => {
   const [, id, k] = ctx.match;
   await ctx.answerCbQuery();
   const label = {
-    s: 'المادة (ستُنشأ مقررات/تلخيص/فيديو/امتحانات تلقائياً)',
+    s: 'المادة (ستُنشأ مقررات وامتحانات تلقائياً)',
     l: 'المستوى (سيُنشأ Semester 1 و Semester 2 تلقائياً)',
     f: 'المجلد',
   }[k];
