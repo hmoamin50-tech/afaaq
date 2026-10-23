@@ -32,7 +32,7 @@ export const WELCOME =
   '👋 أهلاً بك في\n\n📚 <b>مجموعة آفاق</b>\nمكتبة طلاب كلية الهندسة — جامعة كسلا\n\nاختر من القائمة، أو اكتب اسم ملف للبحث عنه:';
 
 // التفرعات التلقائية
-export const SUBJECT_SECTIONS = ['📚 مقررات', '📝 تلخيص', '🎬 شروحات فيديو', '🧪 امتحانات'];
+export const SUBJECT_SECTIONS = ['📚 مقررات', '🧪 امتحانات'];
 export const LEVEL_CHILDREN = ['Semester 1', 'Semester 2'];
 export const PREFIX = { f: '', s: '', l: '' };               // الأسماء الجديدة بلا أيقونات بادئة
 export const LEGACY_PREFIXES = ['📁 ', '📘 ', '🎓 '];         // للحفاظ على أيقونات المجلدات القديمة عند إعادة التسمية

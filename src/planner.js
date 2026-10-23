@@ -72,3 +72,18 @@ export function planFrom(nodes, fileCount, commonMode = 'all') {
   items.sort((a, b) => (a.mode === b.mode ? 0 : a.mode === 'clone' ? -1 : 1));
   return { items, skipped, left };
 }
+
+// ============ دمج «تلخيص» و«شروحات فيديو» داخل «مقررات» ============
+const MERGE_NAMES = ['تلخيص', 'شروحات فيديو'];
+export function mergePlan(nodes, fileCount) {
+  const by = new Map();
+  nodes.forEach((n) => { const k = n.parent_id || 0; (by.get(k) || by.set(k, []).get(k)).push(n); });
+  const items = [];
+  for (const n of nodes) {
+    if (!n.parent_id || !MERGE_NAMES.includes(clean(n.name))) continue;
+    const target = (by.get(n.parent_id) || []).find((x) => clean(x.name) === 'مقررات');
+    items.push({ id: n.id, name: clean(n.name), parent: n.parent_id, target: target?.id ?? null,
+      files: fileCount.get(n.id) || 0, children: (by.get(n.id) || []).length });
+  }
+  return items;
+}
